@@ -1,0 +1,22 @@
+{
+  "name": "vouchy",
+  "version": "0.1.0",
+  "description": "Terminal-first git diff review workflow for Codex.",
+  "author": {
+    "name": "Local developer"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Vouchy",
+    "shortDescription": "Review git changes in an SSH-friendly terminal UI.",
+    "longDescription": "Vouchy packages a terminal diff review CLI and Codex skill. Use it to walk changed files, add file or line comments, and feed the resulting review prompt back to an agent.",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": ["Interactive"],
+    "defaultPrompt": [
+      "Run a terminal diff review",
+      "Review my worktree changes",
+      "Collect review comments for Codex"
+    ]
+  }
+}

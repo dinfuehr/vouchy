@@ -1,0 +1,36 @@
+{
+  "name": "vouchy",
+  "version": "0.1.0",
+  "description": "SSH-friendly terminal UI for reviewing git diffs and collecting agent feedback comments.",
+  "type": "module",
+  "bin": {
+    "vouchy": "./dist/src/cli.js"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "prompts",
+    ".codex-plugin"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test dist/test/*.test.js",
+    "pretest": "npm run build"
+  },
+  "keywords": [
+    "codex",
+    "diff",
+    "git",
+    "review",
+    "tui"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
