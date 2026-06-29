@@ -92,17 +92,3 @@ vouchy --base main
 `auto` is the default scope. It reviews unstaged/untracked changes first. If there are none, it reviews staged changes. If there are no staged changes and the current branch has a tracked upstream branch, it reviews the branch diff. If none of those apply, Vouchy exits with an error.
 
 `worktree` reviews only unstaged and untracked changes. `staged` reviews only staged changes. `branch` compares the current working tree against the merge-base with the current branch's tracked upstream branch. `tracked` is an alias for `branch`. Use `--base main` or `--base origin/main` to review against a specific base branch instead.
-
-## Codex
-
-This repo is also a local Codex plugin scaffold. The supported Codex surface is the bundled `vouchy` skill. Current Codex skill/plugin surfaces can guide the agent, but they do not provide a native extension API for registering a fully interactive custom `/vouchy` TUI command.
-
-The manual Codex workflow is:
-
-```bash
-vouchy
-```
-
-After pressing `S`, return to Codex and paste the generated review prompt into the composer.
-
-For a custom prompt wrapper, copy or symlink `prompts/vouchy.md` into `~/.codex/prompts/` and restart Codex. Current Codex docs describe custom prompts as deprecated in favor of skills, so the plugin skill is the primary wrapper.

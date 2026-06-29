@@ -1,4 +1,0 @@
-interface:
-  display_name: "Vouchy"
-  short_description: "Run the terminal diff review workflow."
-  default_prompt: "Review my git changes interactively"
