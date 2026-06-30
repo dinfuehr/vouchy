@@ -2,6 +2,7 @@ const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
 
 export const ansi = {
   clear: "\x1b[2J\x1b[H",
+  moveHome: "\x1b[H",
   enterAlt: "\x1b[?1049h",
   exitAlt: "\x1b[?1049l",
   hideCursor: "\x1b[?25l",

@@ -527,6 +527,12 @@ export class DiffReviewTui {
     });
   }
 
+  private isFileLoaded(file: ReviewFile): boolean {
+    const diffState = this.diffs.get(file.id);
+    const sourceState = this.sources.get(file.id);
+    return diffState != null && !diffState.loading && sourceState != null && !sourceState.loading;
+  }
+
   private ensureCurrentDiff(): Promise<void> {
     const file = this.currentFile();
     if (file == null) return Promise.resolve();
@@ -1096,13 +1102,17 @@ export class DiffReviewTui {
     }
 
     for (let fileIndex = this.selectedFileIndex + delta; fileIndex >= 0 && fileIndex < this.files.length; fileIndex += delta) {
+      const file = this.files[fileIndex];
+      const isLoaded = file != null && this.isFileLoaded(file);
       this.selectedFileIndex = fileIndex;
       this.selectedLineIndex = 0;
       this.selectedCommentId = null;
       this.diffScrollTop = 0;
       this.clampFileScroll();
-      this.statusMessage = delta > 0 ? "Loading next file..." : "Loading previous file...";
-      this.render();
+      if (!isLoaded) {
+        this.statusMessage = "Loading file...";
+        this.render();
+      }
 
       await this.ensureCurrentDiff();
 
@@ -1117,13 +1127,17 @@ export class DiffReviewTui {
     }
 
     for (let fileIndex = delta > 0 ? 0 : this.files.length - 1; fileIndex >= 0 && fileIndex < this.files.length; fileIndex += delta) {
+      const file = this.files[fileIndex];
+      const isLoaded = file != null && this.isFileLoaded(file);
       this.selectedFileIndex = fileIndex;
       this.selectedLineIndex = 0;
       this.selectedCommentId = null;
       this.diffScrollTop = 0;
       this.clampFileScroll();
-      this.statusMessage = delta > 0 ? "Loading first file..." : "Loading last file...";
-      this.render();
+      if (!isLoaded) {
+        this.statusMessage = "Loading file...";
+        this.render();
+      }
 
       await this.ensureCurrentDiff();
 
@@ -1442,7 +1456,7 @@ export class DiffReviewTui {
     const cursorControl = this.mode === "comment" || this.mode === "overall" || this.mode === "search" || this.mode === "file-picker"
       ? `${ansi.blinkingBarCursor}${ansi.showCursor}${moveCursor(this.inputCursorRow, this.inputCursorColumn)}`
       : ansi.hideCursor;
-    process.stdout.write(`${ansi.clear}${lines.slice(0, height).join("\n")}${cursorControl}`);
+    process.stdout.write(`${ansi.moveHome}${lines.slice(0, height).join("\n")}${cursorControl}`);
   };
 
   private renderHeader(width: number): string {
