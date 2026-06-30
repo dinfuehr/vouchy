@@ -81,6 +81,7 @@ export class DiffReviewTui {
   private overallComment = "";
   private searchQuery = "";
   private statusMessage = "";
+  private quitConfirmationPending = false;
   private inputCursorRow = 1;
   private inputCursorColumn = 1;
   private resolveResult: ((result: ReviewResult | null) => void) | null = null;
@@ -146,6 +147,11 @@ export class DiffReviewTui {
       return;
     }
 
+    if (this.quitConfirmationPending) {
+      this.handleQuitConfirmationInput(data);
+      return;
+    }
+
     const command = this.reviewCommandFromInput(data);
     if (command == null) {
       return;
@@ -157,7 +163,7 @@ export class DiffReviewTui {
 
     switch (command) {
       case "q":
-        this.finish(null);
+        this.requestQuit();
         break;
       case "\x1b":
         if (this.hasActiveSearch()) {
@@ -514,6 +520,29 @@ export class DiffReviewTui {
     if (resolve == null) return;
     this.resolveResult = null;
     resolve(result);
+  }
+
+  private requestQuit(): void {
+    if (this.comments.length === 0) {
+      this.finish(null);
+      return;
+    }
+
+    const noun = this.comments.length === 1 ? "comment" : "comments";
+    this.quitConfirmationPending = true;
+    this.statusMessage = `Quit and discard ${this.comments.length} ${noun}? Press y or q to quit; any other key cancels.`;
+    this.render();
+  }
+
+  private handleQuitConfirmationInput(data: string): void {
+    if (data === "y" || data === "Y" || data === "q") {
+      this.finish(null);
+      return;
+    }
+
+    this.quitConfirmationPending = false;
+    this.statusMessage = "Quit cancelled.";
+    this.render();
   }
 
   private submit(): void {

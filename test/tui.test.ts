@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DiffReviewTui } from "../src/tui.js";
-import type { DiffLine, DiffLineKind, ReviewFile } from "../src/types.js";
+import type { DiffLine, DiffLineKind, ReviewComment, ReviewFile, ReviewResult } from "../src/types.js";
 
 function file(id: string): ReviewFile {
   return { id, path: `${id}.ts`, oldPath: null, status: "modified" };
@@ -11,10 +11,25 @@ function line(kind: DiffLineKind, text: string = kind): DiffLine {
   return { kind, text, oldLine: null, newLine: null };
 }
 
+function comment(): ReviewComment {
+  return {
+    id: "comment-1",
+    filePath: "first.ts",
+    scope: "unstaged",
+    side: "new",
+    lineNumber: 1,
+    body: "Needs a closer look.",
+    diffLineText: "+changed",
+  };
+}
+
 interface TuiFixture {
   render: () => void;
   diffs: Map<string, { loading: boolean; lines: DiffLine[]; error: string | null }>;
   sources: Map<string, { loading: boolean; sources: null; error: string | null }>;
+  comments: ReviewComment[];
+  statusMessage: string;
+  resolveResult: ((result: ReviewResult | null) => void) | null;
   selectedFileIndex: number;
   selectedLineIndex: number;
   moveHunk: (delta: 1 | -1) => Promise<void>;
@@ -84,4 +99,40 @@ test("End key variants select the last row", () => {
 
     assert.equal(review.selectedLineIndex, 4, key);
   }
+});
+
+test("q quits immediately when there are no comments", () => {
+  const review = reviewWithLoadedDiffs([file("first")]);
+  let result: ReviewResult | null | undefined;
+  review.resolveResult = (nextResult) => {
+    result = nextResult;
+  };
+
+  review.handleInput("q");
+
+  assert.equal(result, null);
+});
+
+test("q asks for confirmation before quitting with comments", () => {
+  const review = reviewWithLoadedDiffs([file("first")]);
+  let result: ReviewResult | null | undefined;
+  review.resolveResult = (nextResult) => {
+    result = nextResult;
+  };
+  review.comments.push(comment());
+
+  review.handleInput("q");
+
+  assert.equal(result, undefined);
+  assert.match(review.statusMessage, /discard 1 comment/);
+
+  review.handleInput("n");
+
+  assert.equal(result, undefined);
+  assert.equal(review.statusMessage, "Quit cancelled.");
+
+  review.handleInput("q");
+  review.handleInput("y");
+
+  assert.equal(result, null);
 });
