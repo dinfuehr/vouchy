@@ -4,7 +4,7 @@ import { fuzzyMatch } from "./fuzzy.js";
 import { getFileDiff, getFileSources } from "./git.js";
 import { deleteBackward, deleteForward, deleteToStart, deleteWordBackward, insertText, lineInputState, moveCursorBy, moveCursorToEnd, moveCursorToStart, type LineInputState } from "./line-input.js";
 import { findHunkEnd, findHunkStart, findSearchHit, isSearchableLine, searchHitIndices } from "./navigation.js";
-import { ansi, color, formatStatus, isPrintableInput, moveCursor, padRight, truncate, visibleLength } from "./terminal.js";
+import { ansi, color, formatStatus, isPrintableInput, moveCursor, padRight, truncate, visibleLength, wrapText } from "./terminal.js";
 import type { CommentSide, DiffLine, ReviewComment, ReviewFile, ReviewResult, ReviewScope } from "./types.js";
 
 interface DiffReviewTuiOptions {
@@ -37,6 +37,12 @@ type DiffViewRow =
 type SelectableDiffRow =
   | { type: "line"; lineIndex: number }
   | { type: "comment"; lineIndex: number; commentId: string };
+
+type DiffVisualRow =
+  | { type: "line"; sourceRowIndex: number; lineIndex: number; rendered: string }
+  | { type: "comment"; sourceRowIndex: number; lineIndex: number; commentId: string; rendered: string }
+  | { type: "new-comment-input"; sourceRowIndex: number; lineIndex: number }
+  | { type: "edit-comment-input"; sourceRowIndex: number; lineIndex: number; comment: ReviewComment };
 
 interface FilePickerMatch {
   file: ReviewFile;
@@ -568,6 +574,17 @@ export class DiffReviewTui {
     return Promise.all([this.ensureDiffForFile(file), this.ensureSourcesForFile(file)]).then(() => undefined);
   }
 
+  private selectFirstHunkInCurrentFile(): boolean {
+    const target = findHunkStart(this.currentLines(), -1, 1);
+    if (target == null) return false;
+    this.selectedLineIndex = target;
+    this.selectedCommentId = null;
+    this.clampLineIndex();
+    this.clampDiffScroll();
+    this.clampFileScroll();
+    return true;
+  }
+
   private async ensureAllDiffs(): Promise<void> {
     for (const file of this.files) {
       await this.ensureDiffForFile(file);
@@ -602,7 +619,11 @@ export class DiffReviewTui {
       }
 
       if (this.currentFile()?.id === file.id) {
-        this.clampLineIndex();
+        if (this.selectedLineIndex === 0 && this.selectedCommentId == null) {
+          this.selectFirstHunkInCurrentFile();
+        } else {
+          this.clampLineIndex();
+        }
       }
       this.render();
     })();
@@ -725,7 +746,37 @@ export class DiffReviewTui {
     return lineIndex >= 0 ? lineIndex : 0;
   }
 
-  private selectedViewRowIndex(rows: DiffViewRow[]): number {
+  private diffVisualRows(width: number): DiffVisualRow[] {
+    const visualRows: DiffVisualRow[] = [];
+
+    this.diffRows().forEach((row, sourceRowIndex) => {
+      if (row.type === "line") {
+        const selected = row.lineIndex === this.selectedLineIndex && this.selectedCommentId == null;
+        for (const rendered of this.renderDiffLine(row.line, width, selected)) {
+          visualRows.push({ type: "line", sourceRowIndex, lineIndex: row.lineIndex, rendered });
+        }
+        return;
+      }
+
+      if (row.type === "comment") {
+        for (const rendered of this.renderCommentRow(row.comment, width)) {
+          visualRows.push({ type: "comment", sourceRowIndex, lineIndex: row.lineIndex, commentId: row.comment.id, rendered });
+        }
+        return;
+      }
+
+      if (row.type === "new-comment-input") {
+        visualRows.push({ type: "new-comment-input", sourceRowIndex, lineIndex: row.lineIndex });
+        return;
+      }
+
+      visualRows.push({ type: "edit-comment-input", sourceRowIndex, lineIndex: row.lineIndex, comment: row.comment });
+    });
+
+    return visualRows;
+  }
+
+  private selectedVisualRowIndex(rows: DiffVisualRow[]): number {
     if (this.mode === "comment" && this.editingCommentId == null) {
       const inputIndex = rows.findIndex((row) => row.type === "new-comment-input" && row.lineIndex === this.selectedLineIndex);
       if (inputIndex >= 0) {
@@ -735,7 +786,8 @@ export class DiffReviewTui {
 
     if (this.selectedCommentId != null) {
       const commentIndex = rows.findIndex((row) =>
-        (row.type === "comment" || row.type === "edit-comment-input") && row.comment.id === this.selectedCommentId
+        (row.type === "comment" && row.commentId === this.selectedCommentId)
+          || (row.type === "edit-comment-input" && row.comment.id === this.selectedCommentId)
       );
       if (commentIndex >= 0) {
         return commentIndex;
@@ -1108,7 +1160,12 @@ export class DiffReviewTui {
     this.editingCommentId = null;
     this.diffScrollTop = 0;
     this.clampFileScroll();
-    void this.ensureCurrentDiff();
+    const file = this.currentFile();
+    if (file != null && this.isFileLoaded(file)) {
+      this.selectFirstHunkInCurrentFile();
+    } else {
+      void this.ensureCurrentDiff();
+    }
   }
 
   private async moveHunk(delta: 1 | -1): Promise<void> {
@@ -1209,10 +1266,17 @@ export class DiffReviewTui {
     this.selectedCommentId = null;
     this.clampLineIndex();
 
-    const height = this.diffViewportHeight();
-    const rows = this.diffRows();
+    const { diffWidth, contentHeight: height } = this.layout();
+    const rows = this.diffVisualRows(diffWidth);
     const startRowIndex = rows.findIndex((row) => row.type === "line" && row.lineIndex === startIndex);
-    const endRowIndex = rows.findIndex((row) => row.type === "line" && row.lineIndex === endIndex);
+    let endRowIndex = -1;
+    for (let index = rows.length - 1; index >= 0; index -= 1) {
+      const row = rows[index];
+      if (row?.type === "line" && row.lineIndex === endIndex) {
+        endRowIndex = index;
+        break;
+      }
+    }
     const maxScrollTop = Math.max(0, rows.length - height);
 
     if (startRowIndex < 0 || endRowIndex < 0) {
@@ -1243,9 +1307,9 @@ export class DiffReviewTui {
   }
 
   private clampDiffScroll(): void {
-    const height = this.diffViewportHeight();
-    const rows = this.diffRows();
-    const selectedRowIndex = this.selectedViewRowIndex(rows);
+    const { diffWidth, contentHeight: height } = this.layout();
+    const rows = this.diffVisualRows(diffWidth);
+    const selectedRowIndex = this.selectedVisualRowIndex(rows);
     const maxScrollTop = Math.max(0, rows.length - height);
 
     if (selectedRowIndex < this.diffScrollTop) {
@@ -1697,15 +1761,15 @@ export class DiffReviewTui {
   }
 
   private renderDiff(width: number, height: number, startRow: number, startColumn: number): string[] {
-    const rows = this.diffRows();
+    const rows = this.diffVisualRows(width);
     const rendered: string[] = [];
 
     for (let rowIndex = this.diffScrollTop; rowIndex < rows.length && rendered.length < height; rowIndex += 1) {
       const row = rows[rowIndex];
       if (row == null) continue;
 
-      if (row.type === "line") {
-        rendered.push(this.renderDiffLine(row.line, width, row.lineIndex === this.selectedLineIndex && this.selectedCommentId == null));
+      if (row.type === "line" || row.type === "comment") {
+        rendered.push(row.rendered);
         continue;
       }
 
@@ -1714,8 +1778,6 @@ export class DiffReviewTui {
         rendered.push(this.renderInputLine("    › ", width, startColumn, ansi.yellow));
         continue;
       }
-
-      rendered.push(this.renderCommentRow(row.comment, width));
     }
 
     while (rendered.length < height) {
@@ -1725,16 +1787,16 @@ export class DiffReviewTui {
     return rendered;
   }
 
-  private renderCommentRow(comment: ReviewComment, width: number): string {
+  private renderCommentRow(comment: ReviewComment, width: number): string[] {
     const indent = "      ";
-    const commentText = truncate(comment.body.trim(), Math.max(0, width - indent.length));
-    const plain = padRight(`${indent}${commentText}`, width);
+    const textWidth = Math.max(0, width - indent.length);
+    const commentLines = wrapText(comment.body.trim(), textWidth);
 
     if (this.selectedCommentId === comment.id) {
-      return color(plain, `${ansi.reverse}${ansi.yellow}`);
+      return commentLines.map((commentLine) => color(padRight(`${indent}${commentLine}`, width), `${ansi.reverse}${ansi.yellow}`));
     }
 
-    return padRight(`${indent}${color(commentText, ansi.yellow)}`, width);
+    return commentLines.map((commentLine) => padRight(`${indent}${color(commentLine, ansi.yellow)}`, width));
   }
 
   private formatLineNumber(line: DiffLine): string {
@@ -1744,10 +1806,10 @@ export class DiffReviewTui {
     return "     ";
   }
 
-  private renderDiffLine(line: DiffLine, width: number, selected: boolean): string {
+  private renderDiffLine(line: DiffLine, width: number, selected: boolean): string[] {
     const lineNumber = this.formatLineNumber(line);
     const textWidth = Math.max(0, width - visibleLength(lineNumber) - 1);
-    const text = truncate(line.text, textWidth);
+    const textLines = wrapText(line.text, textWidth);
     const searchHit = this.lineMatchesSearch(line);
     const numberStyles = this.diffLineStyles(line, selected);
 
@@ -1755,13 +1817,15 @@ export class DiffReviewTui {
       numberStyles.push(ansi.bold, ansi.yellow);
     }
 
-    const rendered = [
-      this.styleSegment(lineNumber, numberStyles),
-      this.styleSegment(" ", selected ? [ansi.reverse] : []),
-      this.renderDiffText(line, text, selected, searchHit),
-    ].join("");
+    return textLines.map((text, index) => {
+      const rendered = [
+        this.styleSegment(index === 0 ? lineNumber : "     ", numberStyles),
+        this.styleSegment(" ", selected ? [ansi.reverse] : []),
+        this.renderDiffText(line, text, selected, searchHit),
+      ].join("");
 
-    return this.padStyledRight(rendered, width, selected);
+      return this.padStyledRight(rendered, width, selected);
+    });
   }
 
   private renderDiffText(line: DiffLine, text: string, selected: boolean, searchHit: boolean): string {

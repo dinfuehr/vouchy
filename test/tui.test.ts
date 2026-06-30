@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { stripAnsi } from "../src/terminal.js";
 import { DiffReviewTui } from "../src/tui.js";
 import type { DiffLine, DiffLineKind, ReviewComment, ReviewFile, ReviewResult } from "../src/types.js";
 
@@ -32,8 +33,12 @@ interface TuiFixture {
   resolveResult: ((result: ReviewResult | null) => void) | null;
   selectedFileIndex: number;
   selectedLineIndex: number;
+  diffScrollTop: number;
   moveHunk: (delta: 1 | -1) => Promise<void>;
+  moveFile: (delta: number) => void;
+  selectFileIndex: (index: number) => void;
   handleInput: (data: string) => void;
+  renderDiff: (width: number, height: number, startRow: number, startColumn: number) => string[];
 }
 
 function reviewWithLoadedDiffs(files: ReviewFile[]): TuiFixture {
@@ -99,6 +104,44 @@ test("End key variants select the last row", () => {
 
     assert.equal(review.selectedLineIndex, 4, key);
   }
+});
+
+test("opening another file selects its first hunk", () => {
+  const review = reviewWithLoadedDiffs([file("first"), file("second")]);
+
+  review.moveFile(1);
+
+  assert.equal(review.selectedFileIndex, 1);
+  assert.equal(review.selectedLineIndex, 1);
+});
+
+test("opening a loaded file without hunks keeps the first row selected", () => {
+  const review = reviewWithLoadedDiffs([file("first")]);
+  const state = review.diffs.get("first");
+  assert.ok(state);
+  state.lines = [
+    line("file", "No textual diff for this file."),
+  ];
+
+  review.selectFileIndex(0);
+
+  assert.equal(review.selectedLineIndex, 0);
+});
+
+test("diff lines wrap instead of truncating on narrow screens", () => {
+  const review = reviewWithLoadedDiffs([file("first")]);
+  const state = review.diffs.get("first");
+  assert.ok(state);
+  state.lines = [
+    { kind: "add", text: "+abcdefghijklmnopqrstuvwxyz", oldLine: null, newLine: 42 },
+  ];
+  review.diffScrollTop = 0;
+
+  const rows = review.renderDiff(18, 3, 3, 1).map(stripAnsi);
+
+  assert.equal(rows[0], "   42 +abcdefghijk");
+  assert.equal(rows[1], "      lmnopqrstuvw");
+  assert.equal(rows[2], "      xyz         ");
 });
 
 test("q quits immediately when there are no comments", () => {

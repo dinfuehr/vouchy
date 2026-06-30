@@ -44,6 +44,17 @@ export function truncate(value: string, width: number): string {
   return `${raw.slice(0, width - 3)}...`;
 }
 
+export function wrapText(value: string, width: number): string[] {
+  if (width <= 0) return [""];
+  if (value.length === 0) return [""];
+
+  const lines: string[] = [];
+  for (let index = 0; index < value.length; index += width) {
+    lines.push(value.slice(index, index + width));
+  }
+  return lines;
+}
+
 export function padRight(value: string, width: number): string {
   const truncated = truncate(value, width);
   const pad = Math.max(0, width - visibleLength(truncated));
