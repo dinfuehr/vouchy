@@ -1110,12 +1110,33 @@ export class DiffReviewTui {
       }
     }
 
+    for (let fileIndex = delta > 0 ? 0 : this.files.length - 1; fileIndex >= 0 && fileIndex < this.files.length; fileIndex += delta) {
+      this.selectedFileIndex = fileIndex;
+      this.selectedLineIndex = 0;
+      this.selectedCommentId = null;
+      this.diffScrollTop = 0;
+      this.clampFileScroll();
+      this.statusMessage = delta > 0 ? "Loading first file..." : "Loading last file...";
+      this.render();
+
+      await this.ensureCurrentDiff();
+
+      const lines = this.currentLines();
+      const target = findHunkStart(lines, delta > 0 ? -1 : lines.length, delta);
+      if (target != null) {
+        this.selectHunk(target);
+        this.statusMessage = "";
+        this.render();
+        return;
+      }
+    }
+
     this.selectedFileIndex = originalFileIndex;
     this.selectedLineIndex = originalLineIndex;
     this.selectedCommentId = originalCommentId;
     this.diffScrollTop = originalDiffScrollTop;
     this.fileScrollTop = originalFileScrollTop;
-    this.statusMessage = delta > 0 ? "No next hunk." : "No previous hunk.";
+    this.statusMessage = "No hunks.";
     this.render();
   }
 
