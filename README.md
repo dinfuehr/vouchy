@@ -41,6 +41,12 @@ By default, the submitted review prompt is copied to your clipboard as well as p
 vouchy --no-copy
 ```
 
+Submitted comments are also stored under `~/.vouchy/comments` for agent handoff. To print and clear pending stored comments for the current repository:
+
+```bash
+vouchy --take-comments
+```
+
 ## Keys
 
 - `j` / `k`: move through the diff
