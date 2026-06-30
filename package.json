@@ -7,10 +7,7 @@
     "vouchy": "./dist/src/cli.js"
   },
   "files": [
-    "dist",
-    "skills",
-    "prompts",
-    ".codex-plugin"
+    "dist"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
