@@ -201,12 +201,18 @@ export class DiffReviewTui {
         this.render();
         break;
       case "\x1b[H":
+      case "\x1bOH":
+      case "\x1b[1~":
+      case "\x1b[7~":
         this.selectFirstRow();
         this.clampDiffScroll();
         this.render();
         break;
       case "G":
       case "\x1b[F":
+      case "\x1bOF":
+      case "\x1b[4~":
+      case "\x1b[8~":
         this.selectLastRow();
         this.clampDiffScroll();
         this.render();

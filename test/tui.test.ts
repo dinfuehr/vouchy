@@ -18,6 +18,7 @@ interface TuiFixture {
   selectedFileIndex: number;
   selectedLineIndex: number;
   moveHunk: (delta: 1 | -1) => Promise<void>;
+  handleInput: (data: string) => void;
 }
 
 function reviewWithLoadedDiffs(files: ReviewFile[]): TuiFixture {
@@ -62,4 +63,25 @@ test("moveHunk wraps previous from the first hunk to the last hunk", async () =>
 
   assert.equal(review.selectedFileIndex, 1);
   assert.equal(review.selectedLineIndex, 3);
+});
+
+test("Home key variants select the first row", () => {
+  for (const key of ["\x1b[H", "\x1bOH", "\x1b[1~", "\x1b[7~"]) {
+    const review = reviewWithLoadedDiffs([file("first")]);
+    review.selectedLineIndex = 4;
+
+    review.handleInput(key);
+
+    assert.equal(review.selectedLineIndex, 0, key);
+  }
+});
+
+test("End key variants select the last row", () => {
+  for (const key of ["\x1b[F", "\x1bOF", "\x1b[4~", "\x1b[8~"]) {
+    const review = reviewWithLoadedDiffs([file("first")]);
+
+    review.handleInput(key);
+
+    assert.equal(review.selectedLineIndex, 4, key);
+  }
 });
